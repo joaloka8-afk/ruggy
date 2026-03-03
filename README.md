@@ -56,6 +56,7 @@ npm run start
 - Optional:
   - `OPENAI_API_KEY`
   - `OPENAI_MODEL` (default: `gpt-4.1-mini`)
+  - `GIPHY_API_KEY` (enables GIF lookup based on user message text)
   - `CHAT_MEMORY_BACKEND` (`postgres` or `file`, default auto: `postgres` if `DATABASE_URL` exists)
   - `DATABASE_URL` (required if `CHAT_MEMORY_BACKEND=postgres`)
   - `CHAT_MEMORY_TURNS` (default: `8`)
@@ -66,6 +67,7 @@ npm run start
   - `LOG_LEVEL` (default: `info`)
 
 Ruggy stores bounded per-user chat context in Postgres when available, so it can remember previous conversations across restarts and redeploys.
+When `GIPHY_API_KEY` is set, Ruggy fetches GIFs related to the user message text. Without it, Ruggy falls back to built-in GIFs.
 
 ## Telegram usage
 - `/scan <SOLANA_CA>` to analyze a token.

@@ -8,6 +8,7 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
   DATABASE_URL: z.string().url().optional(),
+  GIPHY_API_KEY: z.string().min(1).optional(),
   TELEGRAM_WEBHOOK_URL: z.string().url().optional(),
   WEBHOOK_PATH: z.string().default("/telegram/webhook"),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -28,6 +29,9 @@ export interface AppConfig {
     chatMemoryBackend: "postgres" | "file";
     databaseUrl?: string;
     chatMemoryFile: string;
+  };
+  media: {
+    giphyApiKey?: string;
   };
   runtime: {
     port: number;
@@ -77,6 +81,9 @@ export function loadConfig(): AppConfig {
       chatMemoryBackend,
       databaseUrl: env.DATABASE_URL,
       chatMemoryFile: env.CHAT_MEMORY_FILE,
+    },
+    media: {
+      giphyApiKey: env.GIPHY_API_KEY,
     },
     runtime: {
       port: env.PORT,

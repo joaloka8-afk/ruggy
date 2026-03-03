@@ -7,11 +7,13 @@ import { ChatService } from "../core/chatService";
 import { getMessageVisualPack, getScoreVisualPack } from "../content/memeMedia";
 import { extractFirstSolanaAddress, isValidSolanaAddress } from "../utils/address";
 import { cleanBotText } from "../utils/text";
+import { GifResolver } from "../services/gifResolver";
 
 interface BotDependencies {
   telegramBotToken: string;
   scanEngine: ScanEngine;
   chatService: ChatService;
+  gifResolver: GifResolver;
   logger: Logger;
 }
 
@@ -32,20 +34,33 @@ async function sendCleanText(ctx: Context, text: string): Promise<void> {
   await ctx.reply(cleanBotText(text));
 }
 
-async function sendGifIfAvailable(ctx: Context, gifUrl: string | undefined, logger: Logger): Promise<void> {
-  if (!gifUrl) {
+async function sendGifIfAvailable(
+  ctx: Context,
+  sourceText: string,
+  gifResolver: GifResolver,
+  fallbackGifUrl: string | undefined,
+  logger: Logger,
+): Promise<void> {
+  const resolvedGifUrl = await gifResolver.resolveGifUrlFromText(sourceText, fallbackGifUrl);
+  if (!resolvedGifUrl) {
     return;
   }
 
   try {
-    await ctx.replyWithAnimation(gifUrl);
+    await ctx.replyWithAnimation(resolvedGifUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown GIF send error";
     logger.debug({ error: message }, "Failed to send GIF animation");
   }
 }
 
-async function runScan(ctx: Context, contractAddress: string, scanEngine: ScanEngine, logger: Logger): Promise<void> {
+async function runScan(
+  ctx: Context,
+  contractAddress: string,
+  scanEngine: ScanEngine,
+  gifResolver: GifResolver,
+  logger: Logger,
+): Promise<void> {
   if (!isValidSolanaAddress(contractAddress)) {
     await sendCleanText(
       ctx,
@@ -65,7 +80,13 @@ async function runScan(ctx: Context, contractAddress: string, scanEngine: ScanEn
     });
 
     await sendCleanText(ctx, formatScanReport(report));
-    await sendGifIfAvailable(ctx, getScoreVisualPack(report.overallScore).gifUrl, logger);
+    await sendGifIfAvailable(
+      ctx,
+      `${report.tokenSymbol ?? "token"} ${report.verdict} ${report.overallScore}`,
+      gifResolver,
+      getScoreVisualPack(report.overallScore).gifUrl,
+      logger,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown scan error";
     await sendCleanText(ctx, `Scan failed: ${message}`);
@@ -73,7 +94,7 @@ async function runScan(ctx: Context, contractAddress: string, scanEngine: ScanEn
 }
 
 export function createTelegramBot(dependencies: BotDependencies): Telegraf<Context> {
-  const { telegramBotToken, scanEngine, chatService, logger } = dependencies;
+  const { telegramBotToken, scanEngine, chatService, gifResolver, logger } = dependencies;
   const bot = new Telegraf<Context>(telegramBotToken);
 
   bot.start(async (ctx) => {
@@ -87,7 +108,7 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
         "You can also chat with Ruggy for guidance and meme coin vibes.",
       ].join("\n"),
     );
-    await sendGifIfAvailable(ctx, visual.gifUrl, logger);
+    await sendGifIfAvailable(ctx, "hello gm crypto", gifResolver, visual.gifUrl, logger);
   });
 
   bot.help(async (ctx) => {
@@ -103,7 +124,7 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
         "Tip: You can paste the CA directly and Ruggy will auto-scan.",
       ].join("\n"),
     );
-    await sendGifIfAvailable(ctx, visual.gifUrl, logger);
+    await sendGifIfAvailable(ctx, "crypto bot help command", gifResolver, visual.gifUrl, logger);
   });
 
   bot.command("scan", async (ctx) => {
@@ -116,7 +137,7 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
       return;
     }
 
-    await runScan(ctx, contractAddress, scanEngine, logger);
+    await runScan(ctx, contractAddress, scanEngine, gifResolver, logger);
   });
 
   bot.on("text", async (ctx) => {
@@ -127,13 +148,13 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
 
     const contractAddress = extractFirstSolanaAddress(text);
     if (contractAddress) {
-      await runScan(ctx, contractAddress, scanEngine, logger);
+      await runScan(ctx, contractAddress, scanEngine, gifResolver, logger);
       return;
     }
 
     const reply = await chatService.getReply(ctx.from?.id ?? 0, text);
     await sendCleanText(ctx, reply.text);
-    await sendGifIfAvailable(ctx, reply.media?.gifUrl, logger);
+    await sendGifIfAvailable(ctx, text, gifResolver, reply.media?.gifUrl, logger);
   });
 
   bot.catch((error, ctx) => {

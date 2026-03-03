@@ -6,6 +6,7 @@ import { ChatService } from "./core/chatService";
 import { ScanEngine } from "./core/scanEngine";
 import { createLogger } from "./logger";
 import { DexscreenerService } from "./services/dexscreener";
+import { GifResolver } from "./services/gifResolver";
 import { RugcheckService } from "./services/rugcheck";
 import { closeHttpServer, startHttpServer } from "./server/webhook";
 
@@ -32,11 +33,16 @@ async function main(): Promise<void> {
     memoryFilePath: config.openAi.chatMemoryFile,
     logger,
   });
+  const gifResolver = new GifResolver({
+    giphyApiKey: config.media.giphyApiKey,
+    logger,
+  });
 
   const bot = createTelegramBot({
     telegramBotToken: config.telegramBotToken,
     scanEngine,
     chatService,
+    gifResolver,
     logger,
   });
 
