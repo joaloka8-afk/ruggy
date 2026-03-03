@@ -14,6 +14,7 @@ const envSchema = z.object({
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
   CHAT_MEMORY_TURNS: z.coerce.number().int().min(1).max(20).default(8),
+  CHAT_MEMORY_FILE: z.string().default(".data/chat-memory.json"),
 });
 
 export interface AppConfig {
@@ -22,6 +23,7 @@ export interface AppConfig {
     apiKey?: string;
     model: string;
     chatMemoryTurns: number;
+    chatMemoryFile: string;
   };
   runtime: {
     port: number;
@@ -63,6 +65,7 @@ export function loadConfig(): AppConfig {
       apiKey: env.OPENAI_API_KEY,
       model: env.OPENAI_MODEL,
       chatMemoryTurns: env.CHAT_MEMORY_TURNS,
+      chatMemoryFile: env.CHAT_MEMORY_FILE,
     },
     runtime: {
       port: env.PORT,
@@ -79,4 +82,3 @@ export function loadConfig(): AppConfig {
     },
   };
 }
-

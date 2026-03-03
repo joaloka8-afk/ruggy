@@ -27,6 +27,7 @@ async function main(): Promise<void> {
     apiKey: config.openAi.apiKey,
     model: config.openAi.model,
     maxTurns: config.openAi.chatMemoryTurns,
+    memoryFilePath: config.openAi.chatMemoryFile,
     logger,
   });
 

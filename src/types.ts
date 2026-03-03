@@ -40,6 +40,11 @@ export interface ChatReply {
   };
 }
 
+export interface ChatMemoryMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface RugcheckRisk {
   name: string;
   value?: string;

@@ -61,6 +61,9 @@ npm run start
   - `PORT` (default: `3000`)
   - `LOG_LEVEL` (default: `info`)
   - `CHAT_MEMORY_TURNS` (default: `8`)
+  - `CHAT_MEMORY_FILE` (default: `.data/chat-memory.json`)
+
+Ruggy stores bounded per-user chat context in `CHAT_MEMORY_FILE` so it can remember previous conversation context between restarts.
 
 ## Telegram usage
 - `/scan <SOLANA_CA>` to analyze a token.

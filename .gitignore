@@ -7,4 +7,4 @@ dist/
 coverage/
 .idea/
 .vscode/
-
+.data/
