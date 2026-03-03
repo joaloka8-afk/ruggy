@@ -7,6 +7,7 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
+  DATABASE_URL: z.string().url().optional(),
   TELEGRAM_WEBHOOK_URL: z.string().url().optional(),
   WEBHOOK_PATH: z.string().default("/telegram/webhook"),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -14,6 +15,7 @@ const envSchema = z.object({
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
   CHAT_MEMORY_TURNS: z.coerce.number().int().min(1).max(20).default(8),
+  CHAT_MEMORY_BACKEND: z.enum(["postgres", "file"]).optional(),
   CHAT_MEMORY_FILE: z.string().default(".data/chat-memory.json"),
 });
 
@@ -23,6 +25,8 @@ export interface AppConfig {
     apiKey?: string;
     model: string;
     chatMemoryTurns: number;
+    chatMemoryBackend: "postgres" | "file";
+    databaseUrl?: string;
     chatMemoryFile: string;
   };
   runtime: {
@@ -58,6 +62,11 @@ export function loadConfig(): AppConfig {
   const env = parsed.data;
   const webhookPath = normalizePath(env.WEBHOOK_PATH);
   const webhookEnabled = Boolean(env.TELEGRAM_WEBHOOK_URL);
+  const chatMemoryBackend = env.CHAT_MEMORY_BACKEND ?? (env.DATABASE_URL ? "postgres" : "file");
+
+  if (chatMemoryBackend === "postgres" && !env.DATABASE_URL) {
+    throw new Error("Invalid environment config: DATABASE_URL is required when CHAT_MEMORY_BACKEND=postgres");
+  }
 
   return {
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
@@ -65,6 +74,8 @@ export function loadConfig(): AppConfig {
       apiKey: env.OPENAI_API_KEY,
       model: env.OPENAI_MODEL,
       chatMemoryTurns: env.CHAT_MEMORY_TURNS,
+      chatMemoryBackend,
+      databaseUrl: env.DATABASE_URL,
       chatMemoryFile: env.CHAT_MEMORY_FILE,
     },
     runtime: {

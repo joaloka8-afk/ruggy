@@ -27,6 +27,8 @@ async function main(): Promise<void> {
     apiKey: config.openAi.apiKey,
     model: config.openAi.model,
     maxTurns: config.openAi.chatMemoryTurns,
+    memoryBackend: config.openAi.chatMemoryBackend,
+    databaseUrl: config.openAi.databaseUrl,
     memoryFilePath: config.openAi.chatMemoryFile,
     logger,
   });
@@ -97,6 +99,11 @@ async function main(): Promise<void> {
         logger.warn({ error: message }, "Failed to close HTTP server cleanly");
       });
     }
+
+    await chatService.close().catch((error) => {
+      const message = error instanceof Error ? error.message : "Unknown chat service close error";
+      logger.warn({ error: message }, "Failed to close chat service cleanly");
+    });
 
     process.exit(0);
   };

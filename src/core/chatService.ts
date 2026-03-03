@@ -10,6 +10,8 @@ interface ChatServiceOptions {
   apiKey?: string;
   model: string;
   maxTurns: number;
+  memoryBackend: "postgres" | "file";
+  databaseUrl?: string;
   memoryFilePath: string;
   logger?: Logger;
 }
@@ -32,7 +34,13 @@ export class ChatService {
   constructor(options: ChatServiceOptions) {
     this.model = options.model;
     this.logger = options.logger;
-    this.memoryStore = new ChatMemoryStore(options.memoryFilePath, options.maxTurns * 2, options.logger);
+    this.memoryStore = new ChatMemoryStore({
+      backend: options.memoryBackend,
+      databaseUrl: options.databaseUrl,
+      filePath: options.memoryFilePath,
+      maxEntriesPerUser: options.maxTurns * 2,
+      logger: options.logger,
+    });
 
     if (options.apiKey) {
       this.client = new OpenAI({ apiKey: options.apiKey });
@@ -41,12 +49,19 @@ export class ChatService {
 
   async getReply(userId: number, userMessage: string): Promise<ChatReply> {
     const visual = getMessageVisualPack(userMessage);
-    const history = this.memoryStore.getHistory(userId);
+    let history: ChatMemoryMessage[] = [];
+
+    try {
+      history = await this.memoryStore.getHistory(userId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown chat-memory read error";
+      this.logger?.warn({ error: message }, "Failed to read chat memory");
+    }
 
     if (!this.client) {
       const fallbackText = this.buildFallbackReply(userMessage, history);
-      this.pushMemory(userId, { role: "user", content: userMessage });
-      this.pushMemory(userId, { role: "assistant", content: fallbackText });
+      await this.pushMemory(userId, { role: "user", content: userMessage });
+      await this.pushMemory(userId, { role: "assistant", content: fallbackText });
 
       return {
         text: this.decorateReply(fallbackText, visual.emoji, visual.slangLine),
@@ -76,8 +91,8 @@ export class ChatService {
       const content = response.choices[0]?.message?.content?.trim();
       if (!content) {
         const fallbackText = this.buildFallbackReply(userMessage, history);
-        this.pushMemory(userId, { role: "user", content: userMessage });
-        this.pushMemory(userId, { role: "assistant", content: fallbackText });
+        await this.pushMemory(userId, { role: "user", content: userMessage });
+        await this.pushMemory(userId, { role: "assistant", content: fallbackText });
 
         return {
           text: this.decorateReply(fallbackText, visual.emoji, visual.slangLine),
@@ -90,8 +105,8 @@ export class ChatService {
         };
       }
 
-      this.pushMemory(userId, { role: "user", content: userMessage });
-      this.pushMemory(userId, { role: "assistant", content });
+      await this.pushMemory(userId, { role: "user", content: userMessage });
+      await this.pushMemory(userId, { role: "assistant", content });
 
       return {
         text: this.decorateReply(content, visual.emoji, visual.slangLine),
@@ -106,8 +121,8 @@ export class ChatService {
       const message = error instanceof Error ? error.message : "Unknown OpenAI error";
       this.logger?.warn({ error: message }, "LLM chat failed; switching to fallback response");
       const fallbackText = this.buildFallbackReply(userMessage, history);
-      this.pushMemory(userId, { role: "user", content: userMessage });
-      this.pushMemory(userId, { role: "assistant", content: fallbackText });
+      await this.pushMemory(userId, { role: "user", content: userMessage });
+      await this.pushMemory(userId, { role: "assistant", content: fallbackText });
 
       return {
         text: this.decorateReply(fallbackText, visual.emoji, visual.slangLine),
@@ -121,8 +136,17 @@ export class ChatService {
     }
   }
 
-  private pushMemory(userId: number, entry: ChatMemoryMessage): void {
-    this.memoryStore.append(userId, entry);
+  async close(): Promise<void> {
+    await this.memoryStore.close();
+  }
+
+  private async pushMemory(userId: number, entry: ChatMemoryMessage): Promise<void> {
+    try {
+      await this.memoryStore.append(userId, entry);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown chat-memory append error";
+      this.logger?.warn({ error: message }, "Failed to append chat memory");
+    }
   }
 
   private buildFallbackReply(userMessage: string, history: ChatMemoryMessage[]): string {

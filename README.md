@@ -56,14 +56,16 @@ npm run start
 - Optional:
   - `OPENAI_API_KEY`
   - `OPENAI_MODEL` (default: `gpt-4.1-mini`)
+  - `CHAT_MEMORY_BACKEND` (`postgres` or `file`, default auto: `postgres` if `DATABASE_URL` exists)
+  - `DATABASE_URL` (required if `CHAT_MEMORY_BACKEND=postgres`)
+  - `CHAT_MEMORY_TURNS` (default: `8`)
+  - `CHAT_MEMORY_FILE` (default: `.data/chat-memory.json`, used only in `file` mode)
   - `TELEGRAM_WEBHOOK_URL` (enables webhook mode)
   - `WEBHOOK_PATH` (default: `/telegram/webhook`)
   - `PORT` (default: `3000`)
   - `LOG_LEVEL` (default: `info`)
-  - `CHAT_MEMORY_TURNS` (default: `8`)
-  - `CHAT_MEMORY_FILE` (default: `.data/chat-memory.json`)
 
-Ruggy stores bounded per-user chat context in `CHAT_MEMORY_FILE` so it can remember previous conversation context between restarts.
+Ruggy stores bounded per-user chat context in Postgres when available, so it can remember previous conversations across restarts and redeploys.
 
 ## Telegram usage
 - `/scan <SOLANA_CA>` to analyze a token.
@@ -89,6 +91,8 @@ If Rugcheck flags a token as rugged, overall score is hard-capped to a very low 
 Set these vars in Railway:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_URL=https://<your-app>.up.railway.app`
+- `CHAT_MEMORY_BACKEND=postgres`
+- `DATABASE_URL` (from Railway Postgres service)
 - Optional: `OPENAI_API_KEY`
 
 Ruggy will auto-register webhook at:
