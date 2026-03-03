@@ -17,6 +17,8 @@ interface BotDependencies {
   logger: Logger;
 }
 
+const PLAIN_COMMAND_PATTERN = /^\/?([a-z_]+)(?:\s+(.+))?$/i;
+
 function getTextMessage(ctx: Context): string | undefined {
   if (!("message" in ctx.update)) {
     return undefined;
@@ -28,6 +30,71 @@ function getTextMessage(ctx: Context): string | undefined {
   }
 
   return message.text;
+}
+
+function parseCommandText(text: string): { command: string; args: string } | null {
+  const match = text.trim().match(PLAIN_COMMAND_PATTERN);
+  if (!match) {
+    return null;
+  }
+
+  const rawCommand = (match[1] ?? "").toLowerCase();
+  const command = rawCommand.includes("@") ? (rawCommand.split("@")[0] ?? rawCommand) : rawCommand;
+  const args = (match[2] ?? "").trim();
+  return {
+    command,
+    args,
+  };
+}
+
+async function handleStart(ctx: Context, gifResolver: GifResolver, logger: Logger): Promise<void> {
+  const visual = getMessageVisualPack("hello gm");
+  await sendCleanText(
+    ctx,
+    [
+      `${visual.emoji} Ruggy is online.`,
+      "Send /scan <SOLANA_CA> or just paste a Solana contract address.",
+      "Ruggy returns a 0-100 safety score (100 = safer, 0 = highest risk).",
+      "You can also chat with Ruggy for guidance and meme coin vibes.",
+    ].join("\n"),
+  );
+  await sendGifIfAvailable(ctx, "hello gm crypto", gifResolver, visual.gifUrl, logger);
+}
+
+async function handleHelp(ctx: Context, gifResolver: GifResolver, logger: Logger): Promise<void> {
+  const visual = getMessageVisualPack("help");
+  await sendCleanText(
+    ctx,
+    [
+      `${visual.emoji} Commands:`,
+      "/start - Intro",
+      "/help - Usage",
+      "/scan <CA> - Analyze a Solana token contract address",
+      "/paste_ca - Show how to paste a CA for auto-scan",
+      "/chat <text> - Chat with Ruggy directly",
+      "/remember - Show what Ruggy remembers from this chat",
+      "",
+      "Tip: You can paste the CA directly and Ruggy will auto-scan.",
+    ].join("\n"),
+  );
+  await sendGifIfAvailable(ctx, "crypto bot help command", gifResolver, visual.gifUrl, logger);
+}
+
+async function handleChat(
+  ctx: Context,
+  text: string,
+  chatService: ChatService,
+  gifResolver: GifResolver,
+  logger: Logger,
+): Promise<void> {
+  const reply = await chatService.getReply(ctx.from?.id ?? 0, text);
+  await sendCleanText(ctx, reply.text);
+  await sendGifIfAvailable(ctx, text, gifResolver, reply.media?.gifUrl, logger);
+}
+
+async function handleRemember(ctx: Context, chatService: ChatService): Promise<void> {
+  const memorySummary = await chatService.getMemorySummary(ctx.from?.id ?? 0);
+  await sendCleanText(ctx, memorySummary);
 }
 
 async function sendCleanText(ctx: Context, text: string): Promise<void> {
@@ -98,33 +165,11 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
   const bot = new Telegraf<Context>(telegramBotToken);
 
   bot.start(async (ctx) => {
-    const visual = getMessageVisualPack("hello gm");
-    await sendCleanText(
-      ctx,
-      [
-        `${visual.emoji} Ruggy is online.`,
-        "Send /scan <SOLANA_CA> or just paste a Solana contract address.",
-        "Ruggy returns a 0-100 safety score (100 = safer, 0 = highest risk).",
-        "You can also chat with Ruggy for guidance and meme coin vibes.",
-      ].join("\n"),
-    );
-    await sendGifIfAvailable(ctx, "hello gm crypto", gifResolver, visual.gifUrl, logger);
+    await handleStart(ctx, gifResolver, logger);
   });
 
   bot.help(async (ctx) => {
-    const visual = getMessageVisualPack("help");
-    await sendCleanText(
-      ctx,
-      [
-        `${visual.emoji} Commands:`,
-        "/start - Intro",
-        "/help - Usage",
-        "/scan <CA> - Analyze a Solana token contract address",
-        "",
-        "Tip: You can paste the CA directly and Ruggy will auto-scan.",
-      ].join("\n"),
-    );
-    await sendGifIfAvailable(ctx, "crypto bot help command", gifResolver, visual.gifUrl, logger);
+    await handleHelp(ctx, gifResolver, logger);
   });
 
   bot.command("scan", async (ctx) => {
@@ -140,6 +185,30 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
     await runScan(ctx, contractAddress, scanEngine, gifResolver, logger);
   });
 
+  bot.command("paste_ca", async (ctx) => {
+    await sendCleanText(
+      ctx,
+      "Paste a Solana contract address directly in chat and Ruggy will auto-scan it. Example: JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+    );
+  });
+
+  bot.command("chat", async (ctx) => {
+    const text = getTextMessage(ctx);
+    const commandMatch = parseCommandText(text ?? "");
+    const chatText = commandMatch?.args ?? "";
+
+    if (!chatText) {
+      await sendCleanText(ctx, "Usage: /chat <your_message>");
+      return;
+    }
+
+    await handleChat(ctx, chatText, chatService, gifResolver, logger);
+  });
+
+  bot.command("remember", async (ctx) => {
+    await handleRemember(ctx, chatService);
+  });
+
   bot.on("text", async (ctx) => {
     const text = getTextMessage(ctx)?.trim();
     if (!text || text.startsWith("/")) {
@@ -152,9 +221,43 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
       return;
     }
 
-    const reply = await chatService.getReply(ctx.from?.id ?? 0, text);
-    await sendCleanText(ctx, reply.text);
-    await sendGifIfAvailable(ctx, text, gifResolver, reply.media?.gifUrl, logger);
+    const parsedCommand = parseCommandText(text);
+    if (parsedCommand) {
+      if (parsedCommand.command === "start") {
+        await handleStart(ctx, gifResolver, logger);
+        return;
+      }
+      if (parsedCommand.command === "help") {
+        await handleHelp(ctx, gifResolver, logger);
+        return;
+      }
+      if (parsedCommand.command === "scan") {
+        if (!parsedCommand.args) {
+          await sendCleanText(ctx, "Usage: scan <SOLANA_CONTRACT_ADDRESS>");
+          return;
+        }
+        await runScan(ctx, parsedCommand.args, scanEngine, gifResolver, logger);
+        return;
+      }
+      if (parsedCommand.command === "paste_ca") {
+        await sendCleanText(ctx, "Paste the CA here in chat and Ruggy will auto-scan it.");
+        return;
+      }
+      if (parsedCommand.command === "chat") {
+        if (!parsedCommand.args) {
+          await sendCleanText(ctx, "Usage: chat <your_message>");
+          return;
+        }
+        await handleChat(ctx, parsedCommand.args, chatService, gifResolver, logger);
+        return;
+      }
+      if (parsedCommand.command === "remember") {
+        await handleRemember(ctx, chatService);
+        return;
+      }
+    }
+
+    await handleChat(ctx, text, chatService, gifResolver, logger);
   });
 
   bot.catch((error, ctx) => {

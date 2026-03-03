@@ -136,6 +136,31 @@ export class ChatService {
     }
   }
 
+  async getMemorySummary(userId: number): Promise<string> {
+    try {
+      const history = await this.memoryStore.getHistory(userId);
+      if (history.length === 0) {
+        return "I do not have earlier memory for this chat yet.";
+      }
+
+      const lastUser = [...history].reverse().find((item) => item.role === "user")?.content;
+      const lastAssistant = [...history].reverse().find((item) => item.role === "assistant")?.content;
+      const totalTurns = Math.floor(history.length / 2);
+
+      const lines = [
+        `I remember ${history.length} message(s) from this chat (${totalTurns} turn(s)).`,
+        lastUser ? `Last user message: "${lastUser}"` : "Last user message: n/a",
+        lastAssistant ? `Last Ruggy reply: "${lastAssistant}"` : "Last Ruggy reply: n/a",
+      ];
+
+      return lines.join("\n");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown memory summary error";
+      this.logger?.warn({ error: message }, "Failed to build memory summary");
+      return "I could not read chat memory right now. Please try again.";
+    }
+  }
+
   async close(): Promise<void> {
     await this.memoryStore.close();
   }

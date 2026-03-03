@@ -60,6 +60,15 @@ async function main(): Promise<void> {
   });
 
   const initializeTelegram = async (): Promise<void> => {
+    await bot.telegram.setMyCommands([
+      { command: "start", description: "Show welcome and commands" },
+      { command: "help", description: "Show usage help" },
+      { command: "scan", description: "Analyze a Solana CA" },
+      { command: "paste_ca", description: "How to paste CA for auto-scan" },
+      { command: "chat", description: "Chat with Ruggy" },
+      { command: "remember", description: "Show chat memory summary" },
+    ]);
+
     if (mode === "webhook" && config.webhook.fullUrl) {
       await bot.telegram.setWebhook(config.webhook.fullUrl);
       logger.info(
