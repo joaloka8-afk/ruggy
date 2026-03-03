@@ -12,6 +12,10 @@
 - Hybrid AI mode:
   - Deterministic 3-agent scoring always runs.
   - OpenAI is optional for richer chat/report language.
+- Meme media layer:
+  - OpenMoji SVG emoji library for message visuals.
+  - GIF reactions in Telegram chat messages.
+  - Meme-coin slang + emoji tone in chat while keeping clean formatting.
 - Railway-ready runtime:
   - Webhook mode when `TELEGRAM_WEBHOOK_URL` is set.
   - Polling mode otherwise.
@@ -108,4 +112,3 @@ gh repo create ruggy --public --source . --remote origin --push
 
 ## Disclaimer
 Ruggy provides risk signals only. It does not provide financial advice or guarantee token safety.
-

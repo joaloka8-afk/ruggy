@@ -2,6 +2,8 @@ import type { Logger } from "pino";
 import OpenAI from "openai";
 
 import type { ChatReply } from "../types";
+import { getMessageVisualPack } from "../content/memeMedia";
+import { cleanBotText } from "../utils/text";
 
 interface ChatServiceOptions {
   apiKey?: string;
@@ -18,6 +20,8 @@ type MemoryMessage = {
 const SYSTEM_PROMPT = [
   "You are Ruggy, a practical Solana meme coin risk assistant inside Telegram.",
   "Keep answers concise, factual, and easy to understand.",
+  "Use clean plain text with short paragraphs.",
+  "You may use tasteful crypto slang and emojis, but stay readable and professional.",
   "Never promise safety or guaranteed returns.",
   "If users ask about a token, suggest using /scan <contract_address> for a risk report.",
 ].join(" ");
@@ -40,8 +44,18 @@ export class ChatService {
   }
 
   async getReply(userId: number, userMessage: string): Promise<ChatReply> {
+    const visual = getMessageVisualPack(userMessage);
+
     if (!this.client) {
-      return { text: this.buildFallbackReply(userMessage), mode: "fallback" };
+      return {
+        text: this.decorateReply(this.buildFallbackReply(userMessage), visual.emoji, visual.slangLine),
+        mode: "fallback",
+        media: {
+          gifUrl: visual.gifUrl,
+          svgPath: visual.svgPath,
+          emoji: visual.emoji,
+        },
+      };
     }
 
     try {
@@ -61,17 +75,41 @@ export class ChatService {
 
       const content = response.choices[0]?.message?.content?.trim();
       if (!content) {
-        return { text: this.buildFallbackReply(userMessage), mode: "fallback" };
+        return {
+          text: this.decorateReply(this.buildFallbackReply(userMessage), visual.emoji, visual.slangLine),
+          mode: "fallback",
+          media: {
+            gifUrl: visual.gifUrl,
+            svgPath: visual.svgPath,
+            emoji: visual.emoji,
+          },
+        };
       }
 
       this.pushMemory(userId, { role: "user", content: userMessage });
       this.pushMemory(userId, { role: "assistant", content });
 
-      return { text: content, mode: "llm" };
+      return {
+        text: this.decorateReply(content, visual.emoji, visual.slangLine),
+        mode: "llm",
+        media: {
+          gifUrl: visual.gifUrl,
+          svgPath: visual.svgPath,
+          emoji: visual.emoji,
+        },
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown OpenAI error";
       this.logger?.warn({ error: message }, "LLM chat failed; switching to fallback response");
-      return { text: this.buildFallbackReply(userMessage), mode: "fallback" };
+      return {
+        text: this.decorateReply(this.buildFallbackReply(userMessage), visual.emoji, visual.slangLine),
+        mode: "fallback",
+        media: {
+          gifUrl: visual.gifUrl,
+          svgPath: visual.svgPath,
+          emoji: visual.emoji,
+        },
+      };
     }
   }
 
@@ -85,17 +123,22 @@ export class ChatService {
   private buildFallbackReply(userMessage: string): string {
     const normalized = userMessage.toLowerCase();
     if (normalized.includes("hello") || normalized.includes("hi")) {
-      return "Hi, I am Ruggy. Send a Solana contract address or use /scan <CA> and I will generate a risk report.";
+      return "Hi, I am Ruggy. Drop a Solana CA or use /scan <CA> and I will run the risk report.";
     }
 
     if (normalized.includes("help")) {
-      return "Use /scan <contract_address> to analyze a token. You can also paste the CA directly in chat.";
+      return "Use /scan <contract_address> to analyze a token. You can also paste a CA directly in chat.";
     }
 
     if (normalized.includes("score")) {
-      return "Ruggy gives a 0-100 safety score. 100 is safer and 0 is highest risk. Use /scan <CA> for details.";
+      return "Ruggy gives a 0-100 safety score. 100 is safer and 0 is highest risk. Use /scan <CA> for the full breakdown.";
     }
 
     return "I can chat and help with meme coin risk checks. Paste a Solana contract address to get a full Ruggy report. Not financial advice.";
+  }
+
+  private decorateReply(message: string, emoji: string, slangLine: string): string {
+    const decorated = `${emoji} ${message}\n\n${slangLine}`;
+    return cleanBotText(decorated);
   }
 }

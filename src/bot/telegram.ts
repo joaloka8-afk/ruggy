@@ -4,7 +4,9 @@ import { Telegraf, type Context } from "telegraf";
 import { formatScanReport } from "../core/reportFormatter";
 import { ScanEngine } from "../core/scanEngine";
 import { ChatService } from "../core/chatService";
+import { getMessageVisualPack, getScoreVisualPack } from "../content/memeMedia";
 import { extractFirstSolanaAddress, isValidSolanaAddress } from "../utils/address";
+import { cleanBotText } from "../utils/text";
 
 interface BotDependencies {
   telegramBotToken: string;
@@ -26,14 +28,35 @@ function getTextMessage(ctx: Context): string | undefined {
   return message.text;
 }
 
-async function runScan(ctx: Context, contractAddress: string, scanEngine: ScanEngine): Promise<void> {
-  if (!isValidSolanaAddress(contractAddress)) {
-    await ctx.reply("Invalid Solana contract address. Please send a valid CA (base58, 32-byte public key).");
+async function sendCleanText(ctx: Context, text: string): Promise<void> {
+  await ctx.reply(cleanBotText(text));
+}
+
+async function sendGifIfAvailable(ctx: Context, gifUrl: string | undefined, logger: Logger): Promise<void> {
+  if (!gifUrl) {
     return;
   }
 
+  try {
+    await ctx.replyWithAnimation(gifUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown GIF send error";
+    logger.debug({ error: message }, "Failed to send GIF animation");
+  }
+}
+
+async function runScan(ctx: Context, contractAddress: string, scanEngine: ScanEngine, logger: Logger): Promise<void> {
+  if (!isValidSolanaAddress(contractAddress)) {
+    await sendCleanText(
+      ctx,
+      "Invalid Solana contract address. Please send a valid CA (base58, 32-byte public key).",
+    );
+    return;
+  }
+
+  const scanVisual = getMessageVisualPack("scan token report");
   await ctx.replyWithChatAction("typing");
-  await ctx.reply("Scanning token with 3 Ruggy agents. This can take a few seconds...");
+  await sendCleanText(ctx, `${scanVisual.emoji} Scanning token with 3 Ruggy agents. This can take a few seconds...`);
 
   try {
     const report = await scanEngine.scanToken({
@@ -41,10 +64,11 @@ async function runScan(ctx: Context, contractAddress: string, scanEngine: ScanEn
       requestUserId: ctx.from?.id ?? 0,
     });
 
-    await ctx.reply(formatScanReport(report));
+    await sendCleanText(ctx, formatScanReport(report));
+    await sendGifIfAvailable(ctx, getScoreVisualPack(report.overallScore).gifUrl, logger);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown scan error";
-    await ctx.reply(`Scan failed: ${message}`);
+    await sendCleanText(ctx, `Scan failed: ${message}`);
   }
 }
 
@@ -53,27 +77,33 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
   const bot = new Telegraf<Context>(telegramBotToken);
 
   bot.start(async (ctx) => {
-    await ctx.reply(
+    const visual = getMessageVisualPack("hello gm");
+    await sendCleanText(
+      ctx,
       [
-        "Ruggy is online.",
+        `${visual.emoji} Ruggy is online.`,
         "Send /scan <SOLANA_CA> or just paste a Solana contract address.",
         "Ruggy returns a 0-100 safety score (100 = safer, 0 = highest risk).",
-        "You can also chat with Ruggy for guidance.",
+        "You can also chat with Ruggy for guidance and meme coin vibes.",
       ].join("\n"),
     );
+    await sendGifIfAvailable(ctx, visual.gifUrl, logger);
   });
 
   bot.help(async (ctx) => {
-    await ctx.reply(
+    const visual = getMessageVisualPack("help");
+    await sendCleanText(
+      ctx,
       [
-        "Commands:",
+        `${visual.emoji} Commands:`,
         "/start - Intro",
         "/help - Usage",
         "/scan <CA> - Analyze a Solana token contract address",
         "",
-        "Tip: You can just paste the CA directly, and Ruggy will scan it.",
+        "Tip: You can paste the CA directly and Ruggy will auto-scan.",
       ].join("\n"),
     );
+    await sendGifIfAvailable(ctx, visual.gifUrl, logger);
   });
 
   bot.command("scan", async (ctx) => {
@@ -82,11 +112,11 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
     const contractAddress = parts[1];
 
     if (!contractAddress) {
-      await ctx.reply("Usage: /scan <SOLANA_CONTRACT_ADDRESS>");
+      await sendCleanText(ctx, "Usage: /scan <SOLANA_CONTRACT_ADDRESS>");
       return;
     }
 
-    await runScan(ctx, contractAddress, scanEngine);
+    await runScan(ctx, contractAddress, scanEngine, logger);
   });
 
   bot.on("text", async (ctx) => {
@@ -97,12 +127,13 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
 
     const contractAddress = extractFirstSolanaAddress(text);
     if (contractAddress) {
-      await runScan(ctx, contractAddress, scanEngine);
+      await runScan(ctx, contractAddress, scanEngine, logger);
       return;
     }
 
     const reply = await chatService.getReply(ctx.from?.id ?? 0, text);
-    await ctx.reply(reply.text);
+    await sendCleanText(ctx, reply.text);
+    await sendGifIfAvailable(ctx, reply.media?.gifUrl, logger);
   });
 
   bot.catch((error, ctx) => {
@@ -112,4 +143,3 @@ export function createTelegramBot(dependencies: BotDependencies): Telegraf<Conte
 
   return bot;
 }
-

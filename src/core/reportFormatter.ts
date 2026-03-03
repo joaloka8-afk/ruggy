@@ -1,4 +1,6 @@
 import type { AgentResult, ScanReport } from "../types";
+import { getScoreVisualPack } from "../content/memeMedia";
+import { cleanBotText } from "../utils/text";
 
 function verdictLabel(verdict: ScanReport["verdict"]): string {
   switch (verdict) {
@@ -29,10 +31,11 @@ function prettyAgentLabel(agent: AgentResult["agent"]): string {
 }
 
 export function formatScanReport(report: ScanReport): string {
+  const visual = getScoreVisualPack(report.overallScore);
   const lines: string[] = [];
   const titleSymbol = report.tokenSymbol ? `${report.tokenSymbol} ` : "";
 
-  lines.push(`RUGGY SCAN REPORT | ${titleSymbol}${report.contractAddress}`);
+  lines.push(`${visual.emoji} RUGGY SCAN REPORT | ${titleSymbol}${report.contractAddress}`);
   lines.push(`Overall Safety Score: ${report.overallScore}/100 (${verdictLabel(report.verdict)})`);
   lines.push(`Generated: ${new Date(report.generatedAt).toUTCString()}`);
 
@@ -63,8 +66,8 @@ export function formatScanReport(report: ScanReport): string {
   }
 
   lines.push("");
-  lines.push("Disclaimer: This is a risk signal, not financial advice.");
+  lines.push(`${visual.slangLine}`);
+  lines.push("Disclaimer: This is a risk signal, not financial advice. DYOR.");
 
-  const output = lines.join("\n");
-  return output.length > 3900 ? `${output.slice(0, 3890)}...` : output;
+  return cleanBotText(lines.join("\n"));
 }

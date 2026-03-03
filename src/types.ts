@@ -33,6 +33,11 @@ export interface ScanReport {
 export interface ChatReply {
   text: string;
   mode: "llm" | "fallback";
+  media?: {
+    gifUrl?: string;
+    svgPath?: string;
+    emoji?: string;
+  };
 }
 
 export interface RugcheckRisk {
@@ -110,4 +115,3 @@ export interface DexPair {
   websiteCount: number;
   socials: DexSocial[];
 }
-
