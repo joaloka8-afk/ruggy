@@ -9,6 +9,12 @@ import { DexscreenerService } from "./services/dexscreener";
 import { RugcheckService } from "./services/rugcheck";
 import { closeHttpServer, startHttpServer } from "./server/webhook";
 
+const TELEGRAM_RETRY_DELAY_MS = 15_000;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger(config.runtime.logLevel);
@@ -31,37 +37,52 @@ async function main(): Promise<void> {
     logger,
   });
 
+  const mode = config.webhook.enabled && config.webhook.fullUrl ? "webhook" : "polling";
   let server: Server | undefined;
+  let isShuttingDown = false;
+  let botReady = false;
 
-  if (config.webhook.enabled && config.webhook.fullUrl) {
-    await bot.telegram.setWebhook(config.webhook.fullUrl);
-    logger.info(
-      { webhookUrl: config.webhook.fullUrl, webhookPath: config.webhook.path },
-      "Telegram webhook configured",
-    );
+  server = await startHttpServer({
+    port: config.runtime.port,
+    logger,
+    mode,
+    bot,
+    webhookPath: mode === "webhook" ? config.webhook.path : undefined,
+  });
 
-    server = await startHttpServer({
-      port: config.runtime.port,
-      logger,
-      mode: "webhook",
-      bot,
-      webhookPath: config.webhook.path,
-    });
-  } else {
+  const initializeTelegram = async (): Promise<void> => {
+    if (mode === "webhook" && config.webhook.fullUrl) {
+      await bot.telegram.setWebhook(config.webhook.fullUrl);
+      logger.info(
+        { webhookUrl: config.webhook.fullUrl, webhookPath: config.webhook.path },
+        "Telegram webhook configured",
+      );
+      return;
+    }
+
     await bot.telegram.deleteWebhook({ drop_pending_updates: false }).catch(() => undefined);
     await bot.launch({ dropPendingUpdates: false });
     logger.info("Telegram polling started");
+  };
 
-    server = await startHttpServer({
-      port: config.runtime.port,
-      logger,
-      mode: "polling",
-      bot,
-    });
-  }
+  const initializeWithRetry = async (): Promise<void> => {
+    while (!botReady && !isShuttingDown) {
+      try {
+        await initializeTelegram();
+        botReady = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown Telegram initialization error";
+        logger.error({ error: message }, "Telegram initialization failed, retrying");
+        await wait(TELEGRAM_RETRY_DELAY_MS);
+      }
+    }
+  };
+
+  void initializeWithRetry();
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down Ruggy");
+    isShuttingDown = true;
 
     try {
       bot.stop(signal);
@@ -93,4 +114,3 @@ main().catch((error) => {
   logger.error({ error: message }, "Ruggy failed to start");
   process.exit(1);
 });
-
